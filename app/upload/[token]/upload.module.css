@@ -1,0 +1,70 @@
+.page {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 8px 16px 64px;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+.card {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-top: 16px;
+  background: #fff;
+  color: #111;
+}
+
+.card h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.missing {
+  border-color: #d1d5db;
+}
+
+.complete {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.flagged {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.state {
+  margin: 4px 0 10px;
+}
+
+.error {
+  color: #b91c1c;
+}
+
+.day {
+  margin: 12px 0 6px;
+  font-size: 15px;
+}
+
+.slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.slot {
+  padding: 6px 12px;
+  border: 1px solid #9ca3af;
+  border-radius: 6px;
+  background: #fff;
+  color: #111;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.slot:disabled {
+  background: #e5e7eb;
+  color: #9ca3af;
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
