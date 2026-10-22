@@ -34,7 +34,39 @@ Look at the image and report only what you can actually see. Do not guess.
 - problem: one short, polite sentence telling the pilgrim what to fix, or an empty string if all is fine.`;
 }
 
+// If the main model is busy (503) or rate-limited (429), retry, then try a backup model.
+const FALLBACK_MODEL = "gemini-flash-latest";
+const RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export async function checkDocument(
+  docType: DocType,
+  image: { bytes: Buffer; mimeType: string },
+): Promise<DocCheck> {
+  const models = [MODEL, MODEL, FALLBACK_MODEL];
+  let lastError: unknown;
+  for (const [i, model] of models.entries()) {
+    try {
+      return await askGemini(model, docType, image);
+    } catch (err) {
+      lastError = err;
+      const status = err instanceof GeminiHttpError ? err.status : 0;
+      // Network errors and timeouts (status 0) are worth another try too.
+      if (status !== 0 && !RETRY_STATUSES.has(status)) throw err;
+      if (i < models.length - 1) await sleep(700 * (i + 1));
+    }
+  }
+  throw lastError;
+}
+
+class GeminiHttpError extends Error {
+  constructor(public status: number) {
+    super(`Gemini returned ${status}`);
+  }
+}
+
+async function askGemini(
+  model: string,
   docType: DocType,
   image: { bytes: Buffer; mimeType: string },
 ): Promise<DocCheck> {
@@ -42,11 +74,11 @@ export async function checkDocument(
   if (!key) throw new Error("GEMINI_API_KEY is not set in .env.local");
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(20_000),
       body: JSON.stringify({
         contents: [
           {
@@ -90,7 +122,7 @@ export async function checkDocument(
     },
   );
 
-  if (!res.ok) throw new Error(`Gemini returned ${res.status}`);
+  if (!res.ok) throw new GeminiHttpError(res.status);
   const data = await res.json();
   const text: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error("Gemini returned no answer");

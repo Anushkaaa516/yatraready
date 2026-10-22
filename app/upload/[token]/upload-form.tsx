@@ -7,6 +7,25 @@ import { DOC_LABELS, DOC_TYPES, type DocState, type DocType } from "@/lib/types"
 
 type Info = { name: string; docs: Record<DocType, DocState> };
 
+// Phone photos are often 4-12 MB, which the host would reject. Shrink to at most 1600px
+// as a JPEG (still easy to read). If anything goes wrong, send the original file.
+async function shrink(file: File): Promise<File> {
+  try {
+    if (!file.type.startsWith("image/")) return file;
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.85));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+
 export default function UploadForm({ token }: { token: string }) {
   const [info, setInfo] = useState<Info | null>(null);
   const [invalid, setInvalid] = useState(false);
@@ -31,12 +50,14 @@ export default function UploadForm({ token }: { token: string }) {
     const form = new FormData();
     form.set("token", token);
     form.set("docType", docType);
-    form.set("file", file);
+    form.set("file", await shrink(file));
     const res = await fetch("/api/upload", { method: "POST", body: form }).catch(() => null);
     setBusy(null);
     if (!res) setErrors((e) => ({ ...e, [docType]: "No internet connection. Please try again." }));
     else if (!res.ok) {
-      const message = (await res.json()).error;
+      // Errors from our server are JSON; one from the hosting layer (e.g. file too big) is not.
+      const body = await res.json().catch(() => null);
+      const message = body?.error ?? "The upload didn't go through. Please try a smaller photo.";
       setErrors((e) => ({ ...e, [docType]: message }));
     }
     await load();
