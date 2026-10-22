@@ -1,5 +1,5 @@
 import type { DocCheck } from "./gemini";
-import { DOC_LABELS, DOC_TYPES, type DocState, type DocType, type OverallStatus, type Pilgrim } from "./types";
+import { DOC_LABELS, MANDATORY_DOCS, type DocState, type DocType, type OverallStatus, type Pilgrim } from "./types";
 
 const MIN_CONFIDENCE = 0.7;
 
@@ -51,10 +51,11 @@ export function judge(docType: DocType, pilgrimName: string, c: DocCheck): DocSt
   return { status: "complete" };
 }
 
-// Plain rules, no AI: one flagged document flags the pilgrim,
-// all three complete means complete, anything else is still missing.
+// Plain rules, no AI. Only the mandatory documents (Aadhaar and passport photo) count:
+// one flagged flags the pilgrim, all complete means complete, anything else is still missing.
+// The optional medical certificate never changes the overall status.
 export function overallStatus(p: Pilgrim): OverallStatus {
-  const states = DOC_TYPES.map((d) => p.docs[d].status);
+  const states = MANDATORY_DOCS.map((d) => p.docs[d].status);
   if (states.includes("flagged")) return "flagged";
   if (states.every((s) => s === "complete")) return "complete";
   return "missing";

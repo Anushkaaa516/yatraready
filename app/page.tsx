@@ -10,9 +10,9 @@ const problems = [
 
 const steps = [
   { n: "1", title: "Add your group", text: "Type names and mobile numbers. Every pilgrim gets a personal upload link." },
-  { n: "2", title: "Pilgrims upload", text: "Aadhaar, medical certificate and passport photo, straight from their phone." },
+  { n: "2", title: "Pilgrims upload", text: "Aadhaar and a passport photo, straight from their phone. A medical certificate is optional, for yatras that need one." },
   { n: "3", title: "AI checks instantly", text: "Wrong document, blurry photo or mismatched name? They hear back within seconds." },
-  { n: "4", title: "Book the call", text: "Ready pilgrims pick a registration slot. The operator's calendar blocks it." },
+  { n: "4", title: "Book the call", text: "On the same page, ready pilgrims pick a registration slot. The operator's calendar blocks it." },
 ];
 
 const features = [

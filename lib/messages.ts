@@ -1,11 +1,11 @@
 import { slotLabel } from "./slots";
-import { DOC_LABELS, DOC_TYPES, type Pilgrim } from "./types";
+import { DOC_LABELS, MANDATORY_DOCS, type Pilgrim } from "./types";
 
 // WhatsApp wording. Plain templates, no AI: same text every time.
 const link = (origin: string, p: Pilgrim) => `${origin}/upload/${p.token}`;
 
 export function docsReminder(p: Pilgrim, origin: string) {
-  const todo = DOC_TYPES.filter((d) => p.docs[d].status !== "complete").map((d) => {
+  const todo = MANDATORY_DOCS.filter((d) => p.docs[d].status !== "complete").map((d) => {
     const s = p.docs[d];
     return s.status === "flagged" ? `- ${DOC_LABELS[d]} (please resend: ${s.reason})` : `- ${DOC_LABELS[d]}`;
   });
@@ -13,7 +13,7 @@ export function docsReminder(p: Pilgrim, origin: string) {
 }
 
 export function bookingMessage(p: Pilgrim, origin: string) {
-  return `Namaste ${p.name}, all your documents are received. Please pick a time for your registration call: ${link(origin, p)}`;
+  return `Namaste ${p.name}, your Aadhaar and photo are received. Please pick a time for your registration call: ${link(origin, p)}`;
 }
 
 export function slotReminder(p: Pilgrim) {

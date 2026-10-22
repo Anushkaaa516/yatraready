@@ -6,7 +6,7 @@ import styles from "./page.module.css";
 import { bookingMessage, docsReminder, slotReminder, whatsappLink } from "@/lib/messages";
 import { dayLabel, slotLabel, timeLabel, upcomingSlots } from "@/lib/slots";
 import { overallStatus, summarize } from "@/lib/status";
-import { DOC_LABELS, DOC_TYPES, type Pilgrim, type PilgrimAction } from "@/lib/types";
+import { DOC_LABELS, DOC_TYPES, MANDATORY_DOCS, isMandatory, type Pilgrim, type PilgrimAction } from "@/lib/types";
 
 const emptyRows = () => Array.from({ length: 5 }, () => ({ name: "", mobile: "" }));
 
@@ -177,7 +177,10 @@ export default function Board() {
               <tr>
                 <th>Pilgrim</th>
                 {DOC_TYPES.map((d) => (
-                  <th key={d}>{DOC_LABELS[d]}</th>
+                  <th key={d}>
+                    {DOC_LABELS[d]}
+                    {!isMandatory(d) && <small className={styles.optionalNote}> (optional)</small>}
+                  </th>
                 ))}
                 <th>Status</th>
                 <th>Registration call</th>
@@ -202,7 +205,11 @@ export default function Board() {
                   </td>
                   {DOC_TYPES.map((d) => (
                     <td key={d} title={p.docs[d].reason}>
-                      <span className={`${styles.pill} ${styles[p.docs[d].status]}`}>{p.docs[d].status}</span>
+                      {!isMandatory(d) && p.docs[d].status === "missing" ? (
+                        <span className={styles.optionalNote}>not needed</span>
+                      ) : (
+                        <span className={`${styles.pill} ${styles[p.docs[d].status]}`}>{p.docs[d].status}</span>
+                      )}
                     </td>
                   ))}
                   <td>
@@ -230,7 +237,7 @@ export default function Board() {
                     ? `Ready. Call at ${slotLabel(p.slot)}`
                     : "Ready. No slot booked yet"
                   : st === "flagged"
-                    ? `Flagged: ${DOC_TYPES.map((d) => p.docs[d].reason).filter(Boolean)[0]}`
+                    ? `Flagged: ${MANDATORY_DOCS.map((d) => p.docs[d].reason).filter(Boolean)[0]}`
                     : "Documents still missing";
               return (
                 <li key={p.id}>

@@ -11,6 +11,7 @@ export default function SlotPicker({ token }: { token: string }) {
   const [mySlot, setMySlot] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [changing, setChanging] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/slots?token=${token}`, { cache: "no-store" });
@@ -18,6 +19,7 @@ export default function SlotPicker({ token }: { token: string }) {
     if (!res.ok) return setError(data.error);
     setSlots(data.slots);
     setMySlot(data.mySlot);
+    setLoaded(true);
   }, [token]);
 
   useEffect(() => {
@@ -38,11 +40,12 @@ export default function SlotPicker({ token }: { token: string }) {
   }
 
   const days = [...new Set(slots.map((s) => dayLabel(s.start)))];
-  const showPicker = !mySlot || changing;
+  const showPicker = loaded && (!mySlot || changing);
 
   return (
     <section className={`${styles.card} ${styles.complete}`}>
       <h2>Book your registration call</h2>
+      {!loaded && !error && <p className={styles.state}>Loading available times…</p>}
       {mySlot && !changing && (
         <>
           <p className={styles.state}>✓ Booked for {slotLabel(mySlot)} (India time). Please keep your phone and Aadhaar ready.</p>
@@ -51,7 +54,7 @@ export default function SlotPicker({ token }: { token: string }) {
       )}
       {showPicker && (
         <>
-          <p className={styles.state}>All documents received. Pick a time when we can call you to complete your registration.</p>
+          <p className={styles.state}>Your Aadhaar and passport photo are received. Pick a time when we can call you to complete your registration.</p>
           {days.map((day) => (
             <div key={day}>
               <h3 className={styles.day}>{day}</h3>

@@ -113,6 +113,12 @@
   border: 1px solid #c2410c;
 }
 
+.optionalNote {
+  color: #78716c;
+  font-weight: 400;
+  font-size: 13px;
+}
+
 .hint {
   color: #555;
   margin: 0 0 8px;

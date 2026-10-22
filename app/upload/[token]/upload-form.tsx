@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./upload.module.css";
 import SlotPicker from "./slot-picker";
-import { DOC_LABELS, DOC_TYPES, type DocState, type DocType } from "@/lib/types";
+import { DOC_LABELS, DOC_TYPES, MANDATORY_DOCS, isMandatory, type DocState, type DocType } from "@/lib/types";
 
 type Info = { name: string; docs: Record<DocType, DocState> };
 
@@ -88,20 +88,28 @@ export default function UploadForm({ token }: { token: string }) {
   if (invalid) return <main className={styles.page}><h1>This link isn&apos;t working</h1><p>It may be mistyped or out of date. Please ask your tour operator to send you a new link.</p></main>;
   if (!info) return <main className={styles.page}><p>Loading…</p></main>;
 
+  const ready = MANDATORY_DOCS.every((d) => info.docs[d].status === "complete");
+
   return (
     <>
     <header className="hero">
       <div className="om" aria-hidden="true">ॐ</div>
       <div className="namaste">नमस्ते · Namaste</div>
       <h1>{info.name}</h1>
-      <p>Your yatra is almost ready. Please upload clear photos of these 3 documents.</p>
+      <p>Upload your Aadhaar and passport photo, then book your registration call, all on this page.</p>
     </header>
     <main className={styles.page}>
+      <h3 className={styles.step}>Step 1 · Upload your documents</h3>
       {DOC_TYPES.map((d) => {
         const s = info.docs[d];
         return (
           <section key={d} className={`${styles.card} ${styles[s.status]}`}>
-            <h2>{DOC_LABELS[d]}</h2>
+            <h2>
+              {DOC_LABELS[d]}{" "}
+              <span className={isMandatory(d) ? styles.required : styles.optional}>
+                {isMandatory(d) ? "required" : "optional · only for some yatras"}
+              </span>
+            </h2>
             <p className={styles.state}>
               {s.status === "complete" && "✓ Received and checked"}
               {s.status === "missing" && "Not uploaded yet"}
@@ -122,7 +130,18 @@ export default function UploadForm({ token }: { token: string }) {
           </section>
         );
       })}
-      {DOC_TYPES.every((d) => info.docs[d].status === "complete") && <SlotPicker token={token} />}
+      <h3 className={styles.step}>Step 2 · Book your registration call</h3>
+      {ready ? (
+        <SlotPicker token={token} />
+      ) : (
+        <section className={`${styles.card} ${styles.locked}`}>
+          <h2>Book your registration call</h2>
+          <p className={styles.state}>
+            🔒 Booking opens as soon as your <strong>Aadhaar</strong> and <strong>passport photo</strong> are received and
+            checked.
+          </p>
+        </section>
+      )}
     </main>
     </>
   );

@@ -75,3 +75,38 @@
   text-decoration: line-through;
   cursor: not-allowed;
 }
+
+.step {
+  margin: 22px 0 -6px;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--red-deep);
+}
+
+.required,
+.optional {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.required {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.optional {
+  background: #e7e5e4;
+  color: #57534e;
+}
+
+.locked {
+  border-style: dashed;
+  background: #fafaf9;
+  color: #57534e;
+}

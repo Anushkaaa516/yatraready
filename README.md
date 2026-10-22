@@ -1,7 +1,7 @@
 # YatraReady
 
-A hackathon MVP for pilgrimage tour operators in India. Pilgrims upload their documents (Aadhaar, medical
-certificate, passport photo), Gemini checks each photo, and the operator sees one status board with a call
+A hackathon MVP for pilgrimage tour operators in India. Pilgrims upload their documents (Aadhaar and passport photo are required; the medical
+certificate is optional, for yatras that need one), Gemini checks each photo, and the operator sees one status board with a call
 list, a registration-slot calendar and ready-written WhatsApp messages.
 
 The product name is a placeholder. Use test data only.
@@ -11,8 +11,8 @@ The product name is a placeholder. Use test data only.
 - **Landing page** (`/`) explains the product.
 - **Operator dashboard** (`/dashboard`): add a group of up to 5 pilgrims, see each pilgrim's documents as
   complete, flagged or missing, track calls, and see booked registration slots on a calendar.
-- **Pilgrim page** (`/upload/<code>`): upload the three documents, get an instant "please resend" with the
-  reason if one is bad, then book a registration call once all three pass.
+- **Pilgrim page** (`/upload/<code>`): upload Aadhaar and passport photo (medical certificate optional), get an instant "please resend" with the
+  reason if one is bad, then book a registration call on the same page once the two required ones pass.
 - **AI** is used in one place, `lib/gemini.ts`: it reads a document photo and reports what it sees. Plain
   rules in `lib/status.ts` decide complete or flagged.
 - OTPs are never sent, read or stored. The operator reads them live on the call.

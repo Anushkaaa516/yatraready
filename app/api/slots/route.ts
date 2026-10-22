@@ -4,7 +4,7 @@ import { overallStatus } from "@/lib/status";
 
 const messages = {
   not_found: "This link is not valid.",
-  not_ready: "Please upload all 3 documents first. Booking opens once they are all checked.",
+  not_ready: "Please upload your Aadhaar and passport photo first. Booking opens once they are checked.",
   invalid: "That time is no longer available. Please pick another.",
   taken: "Sorry, someone just booked that time. Please pick another.",
 } as const;
