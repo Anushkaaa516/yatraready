@@ -26,6 +26,7 @@ export default function Board() {
   const [saving, setSaving] = useState(false);
   const [showReminders, setShowReminders] = useState(false);
   const [slots, setSlots] = useState<string[]>([]);
+  const [copied, setCopied] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/pilgrims", { cache: "no-store" });
@@ -66,6 +67,17 @@ export default function Board() {
       body: JSON.stringify({ action }),
     });
     load();
+  }
+
+  async function copyLink(p: Pilgrim) {
+    const url = `${window.location.origin}/upload/${p.token}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      window.prompt("Copy this link:", url);
+    }
+    setCopied(p.id);
+    setTimeout(() => setCopied(null), 2000);
   }
 
   const s = summarize(pilgrims);
@@ -133,7 +145,6 @@ export default function Board() {
                 <th>Status</th>
                 <th>Registration call</th>
                 <th>Calls</th>
-                <th>Upload link</th>
               </tr>
             </thead>
             <tbody>
@@ -143,6 +154,14 @@ export default function Board() {
                     {p.name}
                     <br />
                     <small>{p.mobile}</small>
+                    <div className={styles.linkRow}>
+                      <a className={styles.linkOpen} href={`/upload/${p.token}`} target="_blank" rel="noreferrer">
+                        Open upload page
+                      </a>
+                      <button className={styles.linkCopy} onClick={() => copyLink(p)}>
+                        {copied === p.id ? "Copied!" : "Copy link"}
+                      </button>
+                    </div>
                   </td>
                   {DOC_TYPES.map((d) => (
                     <td key={d} title={p.docs[d].reason}>
@@ -154,9 +173,6 @@ export default function Board() {
                   </td>
                   <td>{p.registered ? "✓ Registered" : p.slot ? slotLabel(p.slot) : "—"}</td>
                   <td>{p.calls}</td>
-                  <td>
-                    <code>/upload/{p.token}</code>
-                  </td>
                 </tr>
               ))}
             </tbody>

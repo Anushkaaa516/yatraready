@@ -42,7 +42,7 @@ export default function UploadForm({ token }: { token: string }) {
     await load();
   }
 
-  if (invalid) return <main className={styles.page}><h1>Link not valid</h1><p>Please ask your tour operator for a new link.</p></main>;
+  if (invalid) return <main className={styles.page}><h1>This link isn&apos;t working</h1><p>It may be mistyped or out of date. Please ask your tour operator to send you a new link.</p></main>;
   if (!info) return <main className={styles.page}><p>Loading…</p></main>;
 
   return (

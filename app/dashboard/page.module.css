@@ -89,6 +89,30 @@
   color: #991b1b;
 }
 
+.linkRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.linkOpen {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #16a34a;
+  color: #fff;
+  font-size: 13px;
+}
+
+.card .linkCopy {
+  padding: 4px 10px;
+  font-size: 13px;
+  background: #fff;
+  color: #9a3412;
+  border: 1px solid #c2410c;
+}
+
 .hint {
   color: #555;
   margin: 0 0 8px;
