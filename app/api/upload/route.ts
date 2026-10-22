@@ -36,6 +36,6 @@ export async function POST(request: Request) {
     return bad("We couldn't check the document just now. Please try again in a minute.", 502);
   }
 
-  await saveDocResult(token, docType, state, { bytes, ext: EXT[file.type] });
+  await saveDocResult(token, docType, state, { bytes, ext: EXT[file.type], mime: file.type });
   return Response.json({ status: state.status, reason: state.reason ?? null });
 }

@@ -31,7 +31,10 @@ Open http://localhost:3000. Get a key at https://aistudio.google.com/apikey. `.e
 
 ## Notes
 
-- Data is saved to a local `data/db.json` file for now. This works on a laptop but not on Vercel, so the
-  storage in `lib/store.ts` needs to move to Supabase before deploying.
+- **Storage.** With `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` set (in `.env.local`, and in the Vercel
+  project settings), pilgrims and document photos are stored in Supabase. Run `supabase/schema.sql` once in the
+  Supabase SQL Editor first. Without those keys the app falls back to a local `data/db.json` file, which is fine
+  on a laptop but NOT reliable on Vercel (each server instance has its own temp folder, so new pilgrims can
+  "disappear"). All of this lives in `lib/store.ts`.
 - Company name and contact are set in `lib/company.ts`.
 - Slots are 30 minutes, 10:00-18:00 India time, for the next 3 days (`lib/slots.ts`).
