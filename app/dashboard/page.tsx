@@ -27,6 +27,8 @@ export default function Board() {
   const [showReminders, setShowReminders] = useState(false);
   const [slots, setSlots] = useState<string[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
+  const [picking, setPicking] = useState<string | null>(null); // calendar slot the operator clicked
+  const [bookError, setBookError] = useState("");
 
   const load = useCallback(async () => {
     const res = await fetch("/api/pilgrims", { cache: "no-store" });
@@ -69,6 +71,18 @@ export default function Board() {
     load();
   }
 
+  async function bookFor(id: string, slot: string) {
+    setBookError("");
+    const res = await fetch(`/api/pilgrims/${id}/slot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slot }),
+    });
+    if (!res.ok) return setBookError((await res.json().catch(() => null))?.error ?? "Could not book that time.");
+    setPicking(null);
+    load();
+  }
+
   async function copyLink(p: Pilgrim) {
     const url = `${window.location.origin}/upload/${p.token}`;
     try {
@@ -94,6 +108,8 @@ export default function Board() {
 
   const bookedBy = new Map(pilgrims.filter((p) => p.slot).map((p) => [p.slot, p.name]));
   const days = [...new Set(slots.map(dayLabel))];
+  const slotHolder = picking ? pilgrims.find((p) => p.slot === picking) : undefined;
+  const unbooked = pilgrims.filter((p) => !p.slot && !p.registered);
 
   return (
     <>
@@ -248,15 +264,56 @@ export default function Board() {
               {slots
                 .filter((x) => dayLabel(x) === day)
                 .map((x) => (
-                  <div key={x} className={bookedBy.has(x) ? styles.booked : styles.free}>
+                  <button
+                    key={x}
+                    type="button"
+                    className={`${bookedBy.has(x) ? styles.booked : styles.free} ${picking === x ? styles.picked : ""}`}
+                    onClick={() => {
+                      setBookError("");
+                      setPicking(picking === x ? null : x);
+                    }}
+                  >
                     {timeLabel(x)}
                     <br />
                     <small>{bookedBy.get(x) ?? "free"}</small>
-                  </div>
+                  </button>
                 ))}
             </div>
           </div>
         ))}
+        {picking && (
+          <div className={styles.picker}>
+            <strong>{slotLabel(picking)}</strong>
+            {slotHolder ? (
+              <>
+                <p>Booked by {slotHolder.name}.</p>
+                <button
+                  onClick={async () => {
+                    await act(slotHolder.id, "rebook");
+                    setPicking(null);
+                  }}
+                >
+                  Free this slot
+                </button>
+              </>
+            ) : (
+              <>
+                <p>Book this time for:</p>
+                {unbooked.length === 0 && <p className={styles.hint}>Everyone already has a slot, or is registered.</p>}
+                <div className={styles.actions}>
+                  {unbooked.map((p) => (
+                    <button key={p.id} onClick={() => bookFor(p.id, picking)}>
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {bookError && <p className={styles.error}>{bookError}</p>}
+            <button className={styles.linkCopy} onClick={() => setPicking(null)}>Close</button>
+          </div>
+        )}
+        <p className={styles.hint}>Click a time to book it for a pilgrim, or to free a booked one.</p>
       </section>
     </main>
     </>

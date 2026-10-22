@@ -163,6 +163,25 @@ export async function bookSlot(token: string, slot: string): Promise<BookResult>
   return { ok: true };
 }
 
+// The operator books a slot for a pilgrim directly from the calendar. Unlike a pilgrim booking,
+// this does not need all three documents to be complete: the operator decides.
+export async function operatorBook(id: string, slot: string): Promise<BookResult> {
+  const db = backend();
+  const all = await db.readAll();
+  const p = all.find((x) => x.id === id);
+  if (!p) return { ok: false, error: "not_found" };
+  if (!upcomingSlots().includes(slot)) return { ok: false, error: "invalid" };
+  if (all.some((x) => x.id !== p.id && x.slot === slot)) return { ok: false, error: "taken" };
+  p.slot = slot;
+  try {
+    await db.save(p);
+  } catch (err) {
+    if (err instanceof SlotTakenError) return { ok: false, error: "taken" };
+    throw err;
+  }
+  return { ok: true };
+}
+
 export async function applyAction(id: string, action: PilgrimAction): Promise<Pilgrim | undefined> {
   const db = backend();
   const p = (await db.readAll()).find((x) => x.id === id);
