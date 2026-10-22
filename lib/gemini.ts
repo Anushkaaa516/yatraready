@@ -68,13 +68,15 @@ export async function checkDocument(
   const order = ready.length > 0 ? ready : MODELS;
 
   let lastError: unknown = new Error("No Gemini model available");
-  for (const model of order) {
+  for (const [index, model] of order.entries()) {
+    // A normal answer takes 1-4 s. Do not sit on a slow model: move on after 8 s (the last one gets longer).
+    const timeoutMs = index < order.length - 1 ? 8_000 : 20_000;
     try {
       try {
-        return await askGemini(model, docType, image, true);
+        return await askGemini(model, docType, image, true, timeoutMs);
       } catch (err) {
         // A model that does not know the "thinking" setting answers 400: ask once more without it.
-        if (err instanceof GeminiHttpError && err.status === 400) return await askGemini(model, docType, image, false);
+        if (err instanceof GeminiHttpError && err.status === 400) return await askGemini(model, docType, image, false, timeoutMs);
         throw err;
       }
     } catch (err) {
@@ -116,6 +118,7 @@ async function askGemini(
   docType: DocType,
   image: { bytes: Buffer; mimeType: string },
   lowThinking: boolean,
+  timeoutMs: number,
 ): Promise<DocCheck> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY is not set in .env.local");
@@ -125,7 +128,7 @@ async function askGemini(
     {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(timeoutMs),
       body: JSON.stringify({
         contents: [
           {

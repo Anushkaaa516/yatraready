@@ -26,7 +26,12 @@ type Backend = {
 
 // ---------- File backend (local development) ----------
 
-const DATA_DIR = process.env.VERCEL ? path.join(os.tmpdir(), "yatraready") : path.join(process.cwd(), "data");
+// YATRA_DATA_DIR points demo mode (npm run demo) at its own folder, so your real data is never touched.
+const DATA_DIR = process.env.YATRA_DATA_DIR
+  ? path.resolve(process.cwd(), process.env.YATRA_DATA_DIR)
+  : process.env.VERCEL
+    ? path.join(os.tmpdir(), "yatraready")
+    : path.join(process.cwd(), "data");
 const FILE = path.join(DATA_DIR, "db.json");
 
 async function readFileDb(): Promise<Pilgrim[]> {
