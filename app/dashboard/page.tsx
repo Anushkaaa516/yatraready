@@ -19,6 +19,13 @@ function callOrder(p: Pilgrim) {
   return s === "flagged" ? 2 : 3;
 }
 
+// If the session has expired (or someone is not logged in), send them to the login page.
+function kickIfLoggedOut(res: Response) {
+  if (res.status !== 401) return false;
+  window.location.href = "/login";
+  return true;
+}
+
 export default function Board() {
   const [pilgrims, setPilgrims] = useState<Pilgrim[]>([]);
   const [rows, setRows] = useState(emptyRows());
@@ -32,6 +39,7 @@ export default function Board() {
 
   const load = useCallback(async () => {
     const res = await fetch("/api/pilgrims", { cache: "no-store" });
+    if (kickIfLoggedOut(res)) return;
     setPilgrims((await res.json()).pilgrims);
     setSlots(upcomingSlots()); // read the clock here, not during render
   }, []);
@@ -57,18 +65,25 @@ export default function Board() {
       body: JSON.stringify({ pilgrims: filled }),
     });
     setSaving(false);
+    if (kickIfLoggedOut(res)) return;
     if (!res.ok) return setError((await res.json()).error);
     setRows(emptyRows());
     load();
   }
 
   async function act(id: string, action: PilgrimAction) {
-    await fetch(`/api/pilgrims/${id}/action`, {
+    const res = await fetch(`/api/pilgrims/${id}/action`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action }),
     });
+    if (kickIfLoggedOut(res)) return;
     load();
+  }
+
+  async function logOut() {
+    await fetch("/api/logout", { method: "POST" });
+    window.location.href = "/login";
   }
 
   async function bookFor(id: string, slot: string) {
@@ -78,6 +93,7 @@ export default function Board() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ slot }),
     });
+    if (kickIfLoggedOut(res)) return;
     if (!res.ok) return setBookError((await res.json().catch(() => null))?.error ?? "Could not book that time.");
     setPicking(null);
     load();
@@ -119,7 +135,12 @@ export default function Board() {
       <h1>
         Yatra<span>Ready</span>
       </h1>
-      <p>Operator dashboard · <Link href="/" style={{ textDecoration: "underline" }}>Back to home</Link></p>
+      <p>
+        Operator dashboard · <Link href="/" style={{ textDecoration: "underline" }}>Back to home</Link> ·{" "}
+        <button onClick={logOut} style={{ background: "none", border: 0, color: "inherit", textDecoration: "underline", font: "inherit", cursor: "pointer" }}>
+          Log out
+        </button>
+      </p>
     </header>
     <main className={styles.page}>
 

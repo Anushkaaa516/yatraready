@@ -1,3 +1,4 @@
+import { isOperator, unauthorized } from "@/lib/auth";
 import { operatorBook } from "@/lib/store";
 
 const messages = {
@@ -9,6 +10,7 @@ const messages = {
 
 // Operator books a slot for a pilgrim from the dashboard calendar.
 export async function POST(request: Request, ctx: RouteContext<"/api/pilgrims/[id]/slot">) {
+  if (!isOperator(request)) return unauthorized();
   const { id } = await ctx.params;
   const body = await request.json().catch(() => null);
   const result = await operatorBook(id, String(body?.slot ?? ""));

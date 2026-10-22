@@ -19,4 +19,4 @@ alter table pilgrims enable row level security;
 -- Private bucket for the uploaded document photos.
 insert into storage.buckets (id, name, public)
 values ('documents', 'documents', false)
-on conflict (id) do nothing;
+on conflict (id) do nothing; 

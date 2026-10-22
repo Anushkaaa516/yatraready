@@ -1,11 +1,14 @@
+import { isOperator, unauthorized } from "@/lib/auth";
 import { addPilgrims, listPilgrims } from "@/lib/store";
 import { cleanMobile } from "@/lib/status";
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!isOperator(request)) return unauthorized();
   return Response.json({ pilgrims: await listPilgrims() });
 }
 
 export async function POST(request: Request) {
+  if (!isOperator(request)) return unauthorized();
   const body = await request.json().catch(() => null);
   const rows: unknown = body?.pilgrims;
   if (!Array.isArray(rows) || rows.length === 0 || rows.length > 5) {
