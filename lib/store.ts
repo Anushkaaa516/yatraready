@@ -1,4 +1,5 @@
 import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
 import { randomUUID } from "crypto";
 import { upcomingSlots } from "./slots";
@@ -7,7 +8,10 @@ import { DOC_TYPES, type DocState, type DocType, type Pilgrim, type PilgrimActio
 
 // Local test storage: a JSON file. Everything goes through these functions,
 // so swapping in Supabase later only means changing this file.
-const FILE = path.join(process.cwd(), "data", "db.json");
+// On Vercel only the temp folder is writable. That data is temporary (it can reset
+// when the server restarts), which is fine for a demo; Supabase would make it permanent.
+const DATA_DIR = process.env.VERCEL ? path.join(os.tmpdir(), "yatraready") : path.join(process.cwd(), "data");
+const FILE = path.join(DATA_DIR, "db.json");
 
 async function readAll(): Promise<Pilgrim[]> {
   try {
