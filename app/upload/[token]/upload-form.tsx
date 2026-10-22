@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./upload.module.css";
 import SlotPicker from "./slot-picker";
 import { DOC_LABELS, DOC_TYPES, type DocState, type DocType } from "@/lib/types";
@@ -29,8 +29,11 @@ async function shrink(file: File): Promise<File> {
 export default function UploadForm({ token }: { token: string }) {
   const [info, setInfo] = useState<Info | null>(null);
   const [invalid, setInvalid] = useState(false);
-  const [busy, setBusy] = useState<DocType | null>(null);
+  // "waiting" = chosen, but another document is still being checked. We send one at a time,
+  // so two documents never race each other (and we stay inside the AI service's rate limit).
+  const [busy, setBusy] = useState<Partial<Record<DocType, "waiting" | "checking" | "retrying">>>({});
   const [errors, setErrors] = useState<Partial<Record<DocType, string>>>({});
+  const queue = useRef<Promise<void>>(Promise.resolve());
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/p/${token}`, { cache: "no-store" });
@@ -43,16 +46,35 @@ export default function UploadForm({ token }: { token: string }) {
     return () => clearTimeout(t);
   }, [load]);
 
-  async function send(docType: DocType, file: File | undefined) {
+  const setBusyFor = (d: DocType, v: "waiting" | "checking" | "retrying" | undefined) =>
+    setBusy((b) => ({ ...b, [d]: v }));
+
+  function send(docType: DocType, file: File | undefined) {
     setErrors((e) => ({ ...e, [docType]: undefined }));
     if (!file) return;
-    setBusy(docType);
-    const form = new FormData();
-    form.set("token", token);
-    form.set("docType", docType);
-    form.set("file", await shrink(file));
-    const res = await fetch("/api/upload", { method: "POST", body: form }).catch(() => null);
-    setBusy(null);
+    setBusyFor(docType, "waiting");
+    queue.current = queue.current.then(() => upload(docType, file));
+  }
+
+  async function upload(docType: DocType, file: File) {
+    setBusyFor(docType, "checking");
+    const small = await shrink(file);
+    let res: Response | null = null;
+    // If the checking service is busy (a 502), wait a few seconds and try once more automatically.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const form = new FormData();
+      form.set("token", token);
+      form.set("docType", docType);
+      form.set("file", small);
+      res = await fetch("/api/upload", { method: "POST", body: form }).catch(() => null);
+      if (res && res.status !== 502) break;
+      if (attempt === 0) {
+        setBusyFor(docType, "retrying");
+        await new Promise((r) => setTimeout(r, 4000));
+        setBusyFor(docType, "checking");
+      }
+    }
+    setBusyFor(docType, undefined);
     if (!res) setErrors((e) => ({ ...e, [docType]: "No internet connection. Please try again." }));
     else if (!res.ok) {
       // Errors from our server are JSON; one from the hosting layer (e.g. file too big) is not.
@@ -86,8 +108,12 @@ export default function UploadForm({ token }: { token: string }) {
               {s.status === "flagged" && `Please send again: ${s.reason}`}
             </p>
             {errors[d] && <p className={styles.error}>{errors[d]}</p>}
-            {busy === d ? (
-              <p>Checking your document…</p>
+            {busy[d] ? (
+              <p className={styles.progress}>
+                {busy[d] === "waiting" && "⏳ In line. We'll check this right after the previous document."}
+                {busy[d] === "checking" && "🔍 Checking your document. This can take up to 30 seconds, please wait…"}
+                {busy[d] === "retrying" && "The checking service was busy. Trying again automatically…"}
+              </p>
             ) : (
               s.status !== "complete" && (
                 <input type="file" accept="image/*" onChange={(e) => send(d, e.target.files?.[0])} />

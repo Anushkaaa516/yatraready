@@ -17,7 +17,10 @@ type Backend = {
   readAll(): Promise<Pilgrim[]>;
   find(token: string): Promise<Pilgrim | undefined>;
   insert(pilgrims: Pilgrim[]): Promise<void>;
-  save(p: Pilgrim): Promise<void>;
+  // Change ONE pilgrim based on their latest saved record. `change` gets the fresh record and
+  // everyone else (to check slot clashes). Never save an older copy: two uploads finishing at the
+  // same time would then wipe out each other's result.
+  update(id: string, change: (p: Pilgrim, all: Pilgrim[]) => void): Promise<Pilgrim | undefined>;
   saveFile(p: Pilgrim, docType: DocType, file: { bytes: Buffer; ext: string; mime: string }): Promise<void>;
 };
 
@@ -39,18 +42,32 @@ async function writeFileDb(pilgrims: Pilgrim[]) {
   await fs.writeFile(FILE, JSON.stringify(pilgrims, null, 2));
 }
 
+// Writes to the file wait their turn, so read-change-write steps can never interleave.
+let fileQueue: Promise<unknown> = Promise.resolve();
+function inFileQueue<T>(task: () => Promise<T>): Promise<T> {
+  const run = fileQueue.then(task);
+  fileQueue = run.catch(() => undefined);
+  return run;
+}
+
 const fileBackend: Backend = {
   readAll: readFileDb,
   async find(token) {
     return (await readFileDb()).find((p) => p.token === token);
   },
-  async insert(pilgrims) {
-    await writeFileDb([...(await readFileDb()), ...pilgrims]);
-  },
-  async save(p) {
-    const all = await readFileDb();
-    await writeFileDb(all.map((x) => (x.id === p.id ? p : x)));
-  },
+  insert: (pilgrims) =>
+    inFileQueue(async () => {
+      await writeFileDb([...(await readFileDb()), ...pilgrims]);
+    }),
+  update: (id, change) =>
+    inFileQueue(async () => {
+      const all = await readFileDb();
+      const p = all.find((x) => x.id === id);
+      if (!p) return undefined;
+      change(p, all);
+      await writeFileDb(all);
+      return p;
+    }),
   async saveFile(p, docType, file) {
     const dir = path.join(DATA_DIR, "uploads", p.id);
     await fs.mkdir(dir, { recursive: true });
@@ -99,12 +116,18 @@ function supabase(): Backend | null {
         body: JSON.stringify(pilgrims.map((p) => ({ id: p.id, token: p.token, data: p }))),
       });
     },
-    async save(p) {
-      await call(`/rest/v1/pilgrims?id=eq.${encodeURIComponent(p.id)}`, {
+    async update(id, change) {
+      // Read the latest record and write straight back, keeping the gap as short as possible.
+      const all = await rows("select=data&order=created_at.asc");
+      const p = all.find((x) => x.id === id);
+      if (!p) return undefined;
+      change(p, all);
+      await call(`/rest/v1/pilgrims?id=eq.${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { ...json, Prefer: "return=minimal" },
         body: JSON.stringify({ data: p }),
       });
+      return p;
     },
     async saveFile(p, docType, file) {
       await call(`/storage/v1/object/documents/${p.id}/${docType}.${file.ext}`, {
@@ -135,62 +158,59 @@ export async function saveDocResult(
   file: { bytes: Buffer; ext: string; mime: string },
 ): Promise<Pilgrim | undefined> {
   const db = backend();
-  const p = await db.find(token);
-  if (!p) return undefined;
-  await db.saveFile(p, docType, file);
-  p.docs[docType] = state;
-  await db.save(p);
-  return p;
+  const found = await db.find(token);
+  if (!found) return undefined;
+  await db.saveFile(found, docType, file);
+  // Change only this document, on top of the pilgrim's latest record.
+  return db.update(found.id, (p) => {
+    p.docs[docType] = state;
+  });
 }
 
 export type BookResult = { ok: true } | { ok: false; error: "not_found" | "not_ready" | "invalid" | "taken" };
 
-export async function bookSlot(token: string, slot: string): Promise<BookResult> {
-  const db = backend();
-  const all = await db.readAll();
-  const p = all.find((x) => x.token === token);
-  if (!p) return { ok: false, error: "not_found" };
-  if (overallStatus(p) !== "complete") return { ok: false, error: "not_ready" };
+// Shared by pilgrim and operator booking: check the slot, then take it, on the latest data.
+async function takeSlot(id: string, slot: string, mustBeComplete: boolean): Promise<BookResult> {
   if (!upcomingSlots().includes(slot)) return { ok: false, error: "invalid" };
-  if (all.some((x) => x.id !== p.id && x.slot === slot)) return { ok: false, error: "taken" };
-  p.slot = slot;
+  let failure: BookResult | null = null;
   try {
-    await db.save(p);
+    const p = await backend().update(id, (p, all) => {
+      if (mustBeComplete && overallStatus(p) !== "complete") {
+        failure = { ok: false, error: "not_ready" };
+        return;
+      }
+      if (all.some((x) => x.id !== p.id && x.slot === slot)) {
+        failure = { ok: false, error: "taken" };
+        return;
+      }
+      p.slot = slot;
+    });
+    if (!p) return { ok: false, error: "not_found" };
   } catch (err) {
     if (err instanceof SlotTakenError) return { ok: false, error: "taken" };
     throw err;
   }
-  return { ok: true };
+  return failure ?? { ok: true };
+}
+
+export async function bookSlot(token: string, slot: string): Promise<BookResult> {
+  const p = await backend().find(token);
+  if (!p) return { ok: false, error: "not_found" };
+  return takeSlot(p.id, slot, true);
 }
 
 // The operator books a slot for a pilgrim directly from the calendar. Unlike a pilgrim booking,
 // this does not need all three documents to be complete: the operator decides.
 export async function operatorBook(id: string, slot: string): Promise<BookResult> {
-  const db = backend();
-  const all = await db.readAll();
-  const p = all.find((x) => x.id === id);
-  if (!p) return { ok: false, error: "not_found" };
-  if (!upcomingSlots().includes(slot)) return { ok: false, error: "invalid" };
-  if (all.some((x) => x.id !== p.id && x.slot === slot)) return { ok: false, error: "taken" };
-  p.slot = slot;
-  try {
-    await db.save(p);
-  } catch (err) {
-    if (err instanceof SlotTakenError) return { ok: false, error: "taken" };
-    throw err;
-  }
-  return { ok: true };
+  return takeSlot(id, slot, false);
 }
 
 export async function applyAction(id: string, action: PilgrimAction): Promise<Pilgrim | undefined> {
-  const db = backend();
-  const p = (await db.readAll()).find((x) => x.id === id);
-  if (!p) return undefined;
-  if (action === "called") p.calls += 1;
-  if (action === "registered") p.registered = true;
-  if (action === "rebook") p.slot = null; // frees the slot; the pilgrim can pick a new one
-  await db.save(p);
-  return p;
+  return backend().update(id, (p) => {
+    if (action === "called") p.calls += 1;
+    if (action === "registered") p.registered = true;
+    if (action === "rebook") p.slot = null; // frees the slot; the pilgrim can pick a new one
+  });
 }
 
 export async function addPilgrims(people: { name: string; mobile: string }[]): Promise<Pilgrim[]> {

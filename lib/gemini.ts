@@ -12,8 +12,6 @@ export type DocCheck = {
   problem: string;
 };
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
-
 const WHAT_WE_EXPECT: Record<DocType, string> = {
   aadhaar: "an Indian Aadhaar card (front side showing name and photo)",
   medical: "a medical fitness certificate signed or stamped by a doctor",
@@ -34,41 +32,90 @@ Look at the image and report only what you can actually see. Do not guess.
 - problem: one short, polite sentence telling the pilgrim what to fix, or an empty string if all is fine.`;
 }
 
-// If the main model is busy (503) or rate-limited (429), retry, then try a backup model.
-const FALLBACK_MODEL = "gemini-flash-latest";
-const RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// Each model has its own free quota (and its own busy moments), so we try several in turn.
+// A model that says "quota exceeded" (429) or "not found" is skipped for a while instead of
+// being retried on every upload, which is what made checks fail before.
+// Measured: gemini-3-flash-preview with minimal thinking answers in about 1 second; the flash-lite
+// model often returns 503 or stalls for 30+ seconds, so it is only a backup.
+// The free plan allows only ~20 requests per day PER MODEL (and 5 per minute on some), so the list
+// is long on purpose: when one model is used up, the next one takes over. Fast and reliable first.
+const MODELS = [
+  ...new Set([
+    process.env.GEMINI_MODEL,
+    "gemini-3.5-flash-lite",
+    "gemini-3-flash-preview",
+    "gemini-flash-lite-latest",
+    "gemini-3.5-flash",
+    "gemini-3.7-flash",
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
+    "gemini-3.1-flash-lite",
+  ]),
+].filter((m): m is string => Boolean(m));
+const MAX_COOLDOWN_MS = 6 * 60 * 60_000;
+const COOLDOWN_BUSY_MS = 60_000;
+const COOLDOWN_QUOTA_MS = 10 * 60_000;
+const COOLDOWN_GONE_MS = 60 * 60_000;
+const skipUntil = new Map<string, number>();
 
 export async function checkDocument(
   docType: DocType,
   image: { bytes: Buffer; mimeType: string },
 ): Promise<DocCheck> {
-  const models = [MODEL, MODEL, FALLBACK_MODEL];
-  let lastError: unknown;
-  for (const [i, model] of models.entries()) {
+  const now = Date.now();
+  // If every model is cooling down, try them all anyway rather than failing instantly.
+  const ready = MODELS.filter((m) => (skipUntil.get(m) ?? 0) <= now);
+  const order = ready.length > 0 ? ready : MODELS;
+
+  let lastError: unknown = new Error("No Gemini model available");
+  for (const model of order) {
     try {
-      return await askGemini(model, docType, image);
+      try {
+        return await askGemini(model, docType, image, true);
+      } catch (err) {
+        // A model that does not know the "thinking" setting answers 400: ask once more without it.
+        if (err instanceof GeminiHttpError && err.status === 400) return await askGemini(model, docType, image, false);
+        throw err;
+      }
     } catch (err) {
       lastError = err;
       const status = err instanceof GeminiHttpError ? err.status : 0;
-      // Network errors and timeouts (status 0) are worth another try too.
-      if (status !== 0 && !RETRY_STATUSES.has(status)) throw err;
-      if (i < models.length - 1) await sleep(700 * (i + 1));
+      console.error(`Gemini ${model}:`, status || (err as Error).name);
+      // Whatever went wrong, do not keep waiting on this model: go to the next one, and leave this
+      // one alone for a while so the following uploads are not slowed down by it.
+      const hinted = err instanceof GeminiHttpError ? err.retryAfterMs : undefined; // Google says when the quota returns
+      const rest =
+        status === 429
+          ? Math.min(hinted ?? COOLDOWN_QUOTA_MS, MAX_COOLDOWN_MS)
+          : status === 404 || status === 400 || status === 403
+            ? COOLDOWN_GONE_MS
+            : COOLDOWN_BUSY_MS;
+      skipUntil.set(model, Date.now() + rest);
     }
   }
   throw lastError;
 }
 
 class GeminiHttpError extends Error {
-  constructor(public status: number) {
+  constructor(
+    public status: number,
+    public retryAfterMs?: number,
+  ) {
     super(`Gemini returned ${status}`);
   }
+}
+
+// A 429 body carries a hint such as {"retryDelay": "18s"}; turn it into milliseconds.
+function retryHint(body: string): number | undefined {
+  const match = body.match(/"retryDelay"\s*:\s*"([\d.]+)s"/);
+  return match ? Math.ceil(Number(match[1]) * 1000) + 1000 : undefined;
 }
 
 async function askGemini(
   model: string,
   docType: DocType,
   image: { bytes: Buffer; mimeType: string },
+  lowThinking: boolean,
 ): Promise<DocCheck> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY is not set in .env.local");
@@ -78,7 +125,7 @@ async function askGemini(
     {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(15_000),
       body: JSON.stringify({
         contents: [
           {
@@ -91,8 +138,8 @@ async function askGemini(
         generationConfig: {
           temperature: 0,
           responseMimeType: "application/json",
-          // Thinking is not needed for reading a photo and only adds delay.
-          thinkingConfig: { thinkingBudget: 0 },
+          // Reading a photo needs no long reasoning; minimal thinking is several times faster.
+          ...(lowThinking ? { thinkingConfig: { thinkingLevel: "minimal" } } : {}),
           responseSchema: {
             type: "OBJECT",
             properties: {
@@ -122,7 +169,7 @@ async function askGemini(
     },
   );
 
-  if (!res.ok) throw new GeminiHttpError(res.status);
+  if (!res.ok) throw new GeminiHttpError(res.status, res.status === 429 ? retryHint(await res.text()) : undefined);
   const data = await res.json();
   const text: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error("Gemini returned no answer");

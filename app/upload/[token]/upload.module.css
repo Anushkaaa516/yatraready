@@ -37,6 +37,13 @@
   margin: 4px 0 10px;
 }
 
+.progress {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
 .error {
   color: #b91c1c;
 }
